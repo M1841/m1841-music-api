@@ -1,35 +1,51 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 type Link struct {
 	gorm.Model
-	Platform   string `json:"platform"`
-	Address    string `json:"address"`
-	ReleaseID  uint `gorm:"foreignKey:ID"`
+	Platform   string
+	Address    string
+	ReleaseID  uint
 }
 
 type Release struct {
 	gorm.Model
-	Title        string `json:"title"`
-	Subtitle     string `json:"subtitle"`
-	Artist 	     string `json:"artist"`
-	PicturePath  string `json:"picturePath"`
-	DownloadPath string `json:"downloadPath"`
-	Links        []Link `json:"links"`
+	Title        string
+	Subtitle     string
+	Artist 	     string
+	PicturePath  string
+	DownloadPath string
+	Type         string
+	Links        []Link
 }
 
 func main() {
-	db, err := gorm.Open(sqlite.Open("m1841-music.db"), &gorm.Config{})
+	// err := godotenv.Load()
+
+	// if err != nil {
+	// 	panic("Failed to load environment variables")
+	// }
+
+	dbHost := os.Getenv("DB_HOST")
+	dbUser := os.Getenv("DB_USER")
+	dbPassword := os.Getenv("DB_PASSWORD")
+	dbName := os.Getenv("DB_NAME")
+	dbPort := os.Getenv("DB_PORT")
+
+	url := fmt.Sprintf("host=%s  user=%s  password=%s  dbname=%s  port=%s", dbHost, dbUser, dbPassword, dbName, dbPort)
+	db, err := gorm.Open(postgres.Open(url), &gorm.Config{})
 
 	if err != nil {
-		panic("[Server]: Failed to connect to the database")
+		panic("Failed to connect to the database")
 	}
 
 	db.AutoMigrate(&Release{}, &Link{})
@@ -38,7 +54,7 @@ func main() {
 	
 	router.GET("/releases", func (c *gin.Context) {
 		var releases []Release
-		result := db.Preload("Links").Find(&releases)
+		result := db.Preload("Links").Order("created_at desc").Find(&releases)
 
 		if result.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch entries"})
@@ -78,6 +94,31 @@ func main() {
 		}
 
 		c.IndentedJSON(http.StatusCreated, newRelease)
+	})
+
+	router.GET("/links", func (c *gin.Context) {
+		var links []Link
+		result := db.Find(&links)
+
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch entries"})
+			return
+		}
+
+		c.IndentedJSON(http.StatusOK, links)
+	})
+
+	router.GET("/links/:id", func (c *gin.Context) {
+		id := c.Param("id")
+		var link Link
+		result := db.First(&link, id)
+
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch entries"})
+			return
+		}
+
+		c.IndentedJSON(http.StatusOK, link)
 	})
 
 	router.Run(":8080")
